@@ -1,0 +1,274 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and settings",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "familyId": { "type": "string", "description": "ID of the family group the user belongs to" },
+        "categories": { "type": "array", "items": { "type": "string" } },
+        "settings": {
+          "type": "object",
+          "properties": {
+            "darkMode": { "type": "boolean" },
+            "notifications": { "type": "boolean" },
+            "currency": { "type": "string" }
+          }
+        }
+      },
+      "required": ["uid", "email"]
+    },
+    "Family": {
+      "title": "Family",
+      "description": "Family group for shared tracking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "code": { "type": "string", "description": "Unique code to join the family" },
+        "ownerId": { "type": "string" },
+        "members": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["id", "name", "code", "ownerId"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Income or expense record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "familyId": { "type": "string" },
+        "amount": { "type": "number" },
+        "type": { "type": "string", "enum": ["income", "expense"] },
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "isFamily": { "type": "boolean" }
+      },
+      "required": ["userId", "amount", "type", "category", "date"]
+    },
+    "Budget": {
+      "title": "Budget",
+      "description": "Budget limit for a category",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "familyId": { "type": "string" },
+        "category": { "type": "string" },
+        "limit": { "type": "number" },
+        "period": { "type": "string", "enum": ["monthly"] },
+        "rollover": { "type": "boolean" }
+      },
+      "required": ["userId", "category", "limit"]
+    },
+    "FinancialGoal": {
+      "title": "FinancialGoal",
+      "description": "Savings goal",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "targetAmount": { "type": "number" },
+        "currentAmount": { "type": "number" },
+        "deadline": { "type": "string", "format": "date-time" },
+        "category": { "type": "string" },
+        "icon": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "name", "targetAmount", "currentAmount", "createdAt"]
+    },
+    "Bill": {
+      "title": "Bill",
+      "description": "Upcoming bill",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "amount": { "type": "number" },
+        "dueDate": { "type": "string", "format": "date-time" },
+        "category": { "type": "string" },
+        "isRecurring": { "type": "boolean" },
+        "frequency": { "type": "string", "enum": ["monthly", "yearly", "weekly"] },
+        "status": { "type": "string", "enum": ["unpaid", "paid"] },
+        "lastPaidDate": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "name", "amount", "dueDate", "status"]
+    },
+    "Subscription": {
+      "title": "Subscription",
+      "description": "Recurring subscription",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "amount": { "type": "number" },
+        "billingCycle": { "type": "string", "enum": ["monthly", "yearly"] },
+        "nextBillingDate": { "type": "string", "format": "date-time" },
+        "category": { "type": "string" },
+        "provider": { "type": "string" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["userId", "name", "amount", "billingCycle", "nextBillingDate", "isActive"]
+    },
+    "Asset": {
+      "title": "Asset",
+      "description": "Financial asset",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "value": { "type": "number" },
+        "type": { "type": "string", "enum": ["cash", "bank", "investment", "property", "other"] },
+        "lastUpdated": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "name", "value", "type", "lastUpdated"]
+    },
+    "Liability": {
+      "title": "Liability",
+      "description": "Financial liability",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "amount": { "type": "number" },
+        "type": { "type": "string", "enum": ["loan", "credit_card", "mortgage", "other"] },
+        "interestRate": { "type": "number" },
+        "dueDate": { "type": "string", "format": "date-time" },
+        "lastUpdated": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "name", "amount", "type", "lastUpdated"]
+    },
+    "Invite": {
+      "title": "Invite",
+      "description": "Family join request or invite",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "familyId": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "code": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "declined"] }
+      },
+      "required": ["familyId", "email", "status"]
+    },
+    "FamilyRequest": {
+      "title": "FamilyRequest",
+      "description": "Request to join a family",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "familyId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userEmail": { "type": "string", "format": "email" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["familyId", "userId", "userEmail", "status", "createdAt"]
+    },
+    "AppNotification": {
+      "title": "AppNotification",
+      "description": "In-app notification",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["info", "warning", "success", "error"] },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "link": { "type": "string" }
+      },
+      "required": ["userId", "title", "message", "type", "read", "createdAt"]
+    },
+    "Due": {
+      "title": "Due",
+      "description": "Money lent or owed",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "contactName": { "type": "string" },
+        "amount": { "type": "number" },
+        "type": { "type": "string", "enum": ["lent", "owed"] },
+        "status": { "type": "string", "enum": ["pending", "paid"] },
+        "dueDate": { "type": "string", "format": "date-time" },
+        "description": { "type": "string" }
+      },
+      "required": ["userId", "contactName", "amount", "type", "status", "dueDate"]
+    },
+    "SplitGroup": {
+      "title": "SplitGroup",
+      "description": "Group for splitting expenses",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "members": { "type": "array", "items": { "type": "string" } },
+        "ownerId": { "type": "string" }
+      },
+      "required": ["name", "members", "ownerId"]
+    },
+    "SplitExpense": {
+      "title": "SplitExpense",
+      "description": "Expense split among group members",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "groupId": { "type": "string" },
+        "payerId": { "type": "string" },
+        "amount": { "type": "number" },
+        "description": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "splits": { "type": "object", "additionalProperties": { "type": "number" } }
+      },
+      "required": ["groupId", "payerId", "amount", "description", "date", "splits"]
+    },
+    "SMSPassbook": {
+      "title": "SMSPassbook",
+      "description": "List of financial SMS messages",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "address": { "type": "string" },
+        "body": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "parsedAmount": { "type": "number" },
+        "parsedType": { "type": "string", "enum": ["income", "expense"] },
+        "isAdded": { "type": "boolean" }
+      },
+      "required": ["userId", "address", "body", "date", "isAdded"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": { "schema": "User", "description": "User profiles" },
+    "/families/{familyId}": { "schema": "Family", "description": "Family groups" },
+    "/transactions/{transactionId}": { "schema": "Transaction", "description": "Financial transactions" },
+    "/budgets/{budgetId}": { "schema": "Budget", "description": "Budget settings" },
+    "/invites/{inviteId}": { "schema": "Invite", "description": "Family invites" },
+    "/familyRequests/{requestId}": { "schema": "FamilyRequest", "description": "Family join requests" },
+    "/notifications/{notificationId}": { "schema": "AppNotification", "description": "User notifications" },
+    "/dues/{dueId}": { "schema": "Due", "description": "Money lent or owed" },
+    "/splitGroups/{groupId}": { "schema": "SplitGroup", "description": "Split groups" },
+    "/splitExpenses/{expenseId}": { "schema": "SplitExpense", "description": "Split expenses" },
+    "/smsPassbook/{smsId}": { "schema": "SMSPassbook", "description": "SMS passbook entries" },
+    "/goals/{goalId}": { "schema": "FinancialGoal", "description": "Financial goals" },
+    "/bills/{billId}": { "schema": "Bill", "description": "Upcoming bills" },
+    "/subscriptions/{subId}": { "schema": "Subscription", "description": "Recurring subscriptions" },
+    "/assets/{assetId}": { "schema": "Asset", "description": "Financial assets" },
+    "/liabilities/{liabilityId}": { "schema": "Liability", "description": "Financial liabilities" }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "FinTrack Pro 2",
+  "short_name": "FinTrack",
+  "description": "Professional Personal & Family Finance Tracker",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#6366F1",
+  "theme_color": "#6366F1",
+  "icons": [
+    {
+      "src": "/public/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

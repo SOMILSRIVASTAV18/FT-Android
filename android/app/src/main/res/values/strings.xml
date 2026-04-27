@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">FinTrack Pro</string>
+    <string name="title_activity_main">FinTrack Pro</string>
+    <string name="package_name">com.Thinkhat.finta</string>
+    <string name="custom_url_scheme">com.Thinkhat.finta</string>
+    <string name="google_client_id">62768434499-vlf4rhsnp00t6ea0klgsfoit16ccaeao.apps.googleusercontent.com</string>
+    <string name="server_client_id">62768434499-vlf4rhsnp00t6ea0klgsfoit16ccaeao.apps.googleusercontent.com</string>
+</resources>
