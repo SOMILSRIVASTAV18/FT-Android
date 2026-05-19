@@ -5,6 +5,9 @@ const config: CapacitorConfig = {
   appName: 'FinTrack Pro',
   webDir: 'dist',
   plugins: {
+    CapacitorHttp: {
+      enabled: false,
+    },
     GoogleAuth: {
       scopes: ["profile", "email"],
       serverClientId: "62768434499-vlf4rhsnp00t6ea0klgsfoit16ccaeao.apps.googleusercontent.com",

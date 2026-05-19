@@ -39,18 +39,21 @@ import {
   CreditCard,
   Users,
   Fingerprint,
-  MessageSquare
+  MessageSquare,
+  RefreshCw
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { toast } from 'sonner';
 import { auth } from '../lib/firebase';
 import { Logo } from './Logo';
+import { APP_VERSION, BUILD_NUMBER } from '../constants';
 
 interface SettingsProps {
   profile: UserProfile;
+  onCheckForUpdates?: () => void;
 }
 
-export function Settings({ profile }: SettingsProps) {
+export function Settings({ profile, onCheckForUpdates }: SettingsProps) {
   const [displayName, setDisplayName] = useState(profile.displayName || '');
   const [photoURL, setPhotoURL] = useState(profile.photoURL || '');
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
@@ -505,6 +508,22 @@ export function Settings({ profile }: SettingsProps) {
                 <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-1 transition-transform" />
               </label>
 
+              <button 
+                className="w-full flex items-center justify-between p-4 rounded-[2rem] hover:bg-primary/5 transition-all group" 
+                onClick={onCheckForUpdates}
+              >
+                <div className="flex items-center gap-4">
+                  <div className="bg-amber-500/10 p-2.5 rounded-2xl text-amber-600 dark:text-amber-400">
+                    <RefreshCw className="h-5 w-5" />
+                  </div>
+                  <div className="text-left">
+                    <p className="font-bold text-sm dark:text-white">Check for Updates</p>
+                    <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest leading-none mt-1">Manual Update</p>
+                  </div>
+                </div>
+                <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-1 transition-transform" />
+              </button>
+
               <div className="p-4 space-y-2">
                 <Label className="text-[10px] font-black uppercase tracking-widest ml-1 opacity-70 dark:text-white/60">Initial Balance ({profile.settings.currency})</Label>
                 <div className="flex gap-2">
@@ -538,7 +557,7 @@ export function Settings({ profile }: SettingsProps) {
         <Logo showText size="md" className="opacity-80 hover:opacity-100 transition-opacity" />
         <div className="text-center">
           <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.4em]">FinTrack Pro <span className="text-primary/50">Enterprise Edition</span></p>
-          <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mt-1 opacity-50">Version 2.4.0 (Build 82)</p>
+          <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mt-1 opacity-50">Version {APP_VERSION} (Build {BUILD_NUMBER})</p>
         </div>
       </div>
     </div>

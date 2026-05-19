@@ -12,7 +12,9 @@ import {
   User as FirebaseUser
 } from 'firebase/auth';
 import { 
-  getFirestore, 
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   doc, 
   setDoc, 
   getDoc, 
@@ -29,26 +31,45 @@ import {
   Timestamp,
   getDocFromServer,
   getDocs,
-  writeBatch
+  writeBatch,
+  enableNetwork,
+  disableNetwork
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+// Initialize Firestore with persistent cache for better native performance and offline support
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager()
+  })
+}, firebaseConfig.firestoreDatabaseId);
+
 export const googleProvider = new GoogleAuthProvider();
 
-// Test connection
+// Test connection and handle offline status
 async function testConnection() {
   try {
+    // Try to reach server directly to check connectivity
     await getDocFromServer(doc(db, 'test', 'connection'));
+    console.log("Firestore connection verified online");
   } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration.");
+    if (error instanceof Error) {
+      if (error.message.includes('the client is offline')) {
+        console.warn("Firestore is running in offline mode. Data will sync when reconnected.");
+      } else {
+        console.error("Firestore connectivity check failed:", error.message);
+      }
     }
   }
 }
 testConnection();
+
+// Network control helpers for native app lifecycle
+export const goOnline = () => enableNetwork(db);
+export const goOffline = () => disableNetwork(db);
 
 export enum OperationType {
   CREATE = 'create',

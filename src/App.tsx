@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { auth, db, onAuthStateChanged, doc, getDoc, setDoc, onSnapshot, collection, query, where, orderBy, handleFirestoreError, OperationType, Timestamp, limit, getRedirectResult, updateDoc, getDocs, sendEmailVerification } from './lib/firebase';
+import { auth, db, onAuthStateChanged, doc, getDoc, setDoc, onSnapshot, collection, query, where, orderBy, handleFirestoreError, OperationType, Timestamp, limit, getRedirectResult, updateDoc, getDocs, sendEmailVerification, goOnline, goOffline } from './lib/firebase';
 import { Auth } from './components/Auth';
 import { UserProfile, Transaction, Family, Budget, DEFAULT_CATEGORIES, AppNotification } from './types';
 import { Toaster } from '@/components/ui/sonner';
@@ -49,6 +49,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { Capacitor } from '@capacitor/core';
+import { App as CapacitorApp } from '@capacitor/app';
 
 import { NativeService } from './lib/native';
 import { parseSMS } from './lib/smsParser';
@@ -56,6 +57,7 @@ import { addDoc } from './lib/firebase';
 import { toast } from 'sonner';
 
 import { parseSMSWithAI } from './lib/gemini';
+import { UpdateManager, UpdateManagerHandle } from './components/UpdateManager';
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
@@ -74,6 +76,7 @@ export default function App() {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [isLocked, setIsLocked] = useState(false);
   const [showMockEmail, setShowMockEmail] = useState(false);
+  const updateManagerRef = React.useRef<UpdateManagerHandle>(null);
 
   const transactions = useMemo(() => {
     const combined = [...personalTxs, ...familyTxs];
@@ -98,6 +101,15 @@ export default function App() {
           if (granted) {
             toast.success('SMS Permissions granted');
           }
+
+          // Reconnect when app returns to foreground
+          CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+            if (isActive) {
+              goOnline();
+            } else {
+              goOffline();
+            }
+          });
         }
       } catch (error) {
         console.error('Native initialization failed', error);
@@ -121,6 +133,38 @@ export default function App() {
     };
     checkRedirect();
   }, []);
+
+  // Handle Android Back Button
+  useEffect(() => {
+    if (Capacitor.getPlatform() === 'web') return;
+
+    const backButtonListener = CapacitorApp.addListener('backButton', ({ canGoBack }) => {
+      // If we are in a mobile view/menu, close it first
+      if (isMobileMenuOpen) {
+        setIsMobileMenuOpen(false);
+        return;
+      }
+
+      // If sidebar is open, close it
+      if (isSidebarOpen) {
+        setIsSidebarOpen(false);
+        return;
+      }
+
+      // If we are not on the dashboard tab, go back to dashboard
+      if (activeTab !== 'dashboard') {
+        setActiveTab('dashboard');
+        return;
+      }
+
+      // If we are on the dashboard and at the root, exit the app
+      CapacitorApp.exitApp();
+    });
+
+    return () => {
+      backButtonListener.remove();
+    };
+  }, [activeTab, isMobileMenuOpen, isSidebarOpen]);
 
   const smsInitialized = React.useRef(false);
 
@@ -291,7 +335,17 @@ export default function App() {
     if (!user) return;
 
     setLoading(true);
+    const timeout = setTimeout(() => {
+      if (!profile) {
+        toast.error("Connecting to server...", {
+          description: "Data loading is taking longer than usual. Please check your internet connection.",
+          duration: 5000,
+        });
+      }
+    }, 10000);
+
     const profileUnsubscribe = onSnapshot(doc(db, 'users', user.uid), (userDoc) => {
+      clearTimeout(timeout);
       try {
         if (userDoc.exists()) {
           setProfile(userDoc.data() as UserProfile);
@@ -309,7 +363,9 @@ export default function App() {
             },
             createdAt: Timestamp.now()
           };
-          setDoc(doc(db, 'users', user.uid), initialProfile);
+          setDoc(doc(db, 'users', user.uid), initialProfile).catch(err => {
+            handleFirestoreError(err, OperationType.CREATE, `users/${user.uid}`);
+          });
           setProfile(initialProfile);
         }
       } catch (err) {
@@ -318,14 +374,18 @@ export default function App() {
         setLoading(false);
       }
     }, (error) => {
+      clearTimeout(timeout);
       setLoading(false);
-      // Only handle error if user is still logged in to avoid stale listener errors
       if (auth.currentUser) {
-        handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
+        console.error("Profile snapshot error:", error);
+        toast.error("Failed to sync profile");
       }
     });
 
-    return () => profileUnsubscribe();
+    return () => {
+      profileUnsubscribe();
+      clearTimeout(timeout);
+    };
   }, [user?.uid]);
 
   // Listen to personal transactions
@@ -652,7 +712,7 @@ export default function App() {
       case 'bills': return <Bills profile={profile!} />;
       case 'subscriptions': return <Subscriptions profile={profile!} />;
       case 'assets-liabilities': return <AssetsLiabilities profile={profile!} />;
-      case 'settings': return <Settings profile={profile!} />;
+      case 'settings': return <Settings profile={profile!} onCheckForUpdates={() => updateManagerRef.current?.checkForUpdates(true)} />;
       case 'help': return <Help />;
       default: return <Dashboard transactions={transactions} profile={profile!} family={family} />;
     }
@@ -862,6 +922,7 @@ export default function App() {
       </AnimatePresence>
 
       <Toaster position="top-center" richColors closeButton />
+      <UpdateManager ref={updateManagerRef} />
     </div>
   );
 }
