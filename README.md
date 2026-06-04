@@ -117,12 +117,21 @@ Automatically log transactions from bank SMS.
 
 ## Deployment
 
+### Deploying via AI Studio
+
+1. **Share**: Click the "Share" button in the AI Studio header to create a public preview link.
+2. **Cloud Run**: Use the "Deploy to Cloud Run" option in the settings menu for a production-ready deployment.
+
+### Manual Deployment (e.g., Vercel, Netlify)
+
 1. **Build the application**:
    ```bash
    npm run build
    ```
 2. **Deploy the `dist` folder**:
    Upload the contents of the `dist` directory to your preferred static hosting provider.
+3. **Configure Environment Variables**:
+   Ensure `GEMINI_API_KEY` is set in your hosting provider's environment settings.
 
 ## Security
 
@@ -131,4 +140,6 @@ The application uses Firebase Security Rules to ensure that:
 - Family data is only accessible to members of that family.
 - Critical fields like `role` are protected from unauthorized updates.
 
+## License
 
+MIT
