@@ -679,9 +679,9 @@ export function Transactions({ transactions, profile, family }: TransactionsProp
                     </div>
                   )}
                 </div>
-                <DialogFooter className="flex gap-2">
-                  <Button variant="outline" onClick={() => setIsPdfExportOpen(false)} className="rounded-xl border-2 font-bold h-12">Cancel</Button>
-                  <Button onClick={exportPDF} className="flex-1 h-12 font-black rounded-xl shadow-lg shadow-primary/20">Generate PDF</Button>
+                <DialogFooter className="flex flex-col sm:flex-row gap-2 w-full">
+                  <Button variant="outline" onClick={() => setIsPdfExportOpen(false)} className="w-full sm:flex-1 rounded-xl border-2 font-bold h-12">Cancel</Button>
+                  <Button onClick={exportPDF} className="w-full sm:flex-1 h-12 font-black rounded-xl shadow-lg shadow-primary/20">Generate PDF</Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
