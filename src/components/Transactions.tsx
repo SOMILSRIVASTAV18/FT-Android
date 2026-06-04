@@ -82,6 +82,12 @@ export function Transactions({ transactions, profile, family }: TransactionsProp
   const [isFamily, setIsFamily] = useState(!!profile.familyId);
   const [isCategorizing, setIsCategorizing] = useState(false);
 
+  // PDF Export Filters
+  const [isPdfExportOpen, setIsPdfExportOpen] = useState(false);
+  const [pdfDuration, setPdfDuration] = useState<'10days' | '15days' | '1month' | '1year' | 'custom' | 'all'>('all');
+  const [pdfStartDate, setPdfStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [pdfEndDate, setPdfEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+
   const paymentModes = [
     'Cash',
     ...(profile.bankAccounts || [])
@@ -249,15 +255,176 @@ export function Transactions({ transactions, profile, family }: TransactionsProp
   const exportPDF = async () => {
     try {
       const doc = new jsPDF();
-      doc.setFontSize(20);
-      doc.setTextColor(139, 92, 246);
-      doc.text('Personal Activity Report', 14, 20);
+      const currency = profile.settings.currency || '$';
+      
+      // Filter transactions based on selection duration
+      const txsToExport = filteredTransactions.filter(tx => {
+        const txDate = tx.date.toDate();
+        const now = new Date();
+        if (pdfDuration === '10days') {
+          const limit = new Date();
+          limit.setDate(now.getDate() - 10);
+          return txDate >= limit;
+        }
+        if (pdfDuration === '15days') {
+          const limit = new Date();
+          limit.setDate(now.getDate() - 15);
+          return txDate >= limit;
+        }
+        if (pdfDuration === '1month') {
+          const limit = new Date();
+          limit.setMonth(now.getMonth() - 1);
+          return txDate >= limit;
+        }
+        if (pdfDuration === '1year') {
+          const limit = new Date();
+          limit.setFullYear(now.getFullYear() - 1);
+          return txDate >= limit;
+        }
+        if (pdfDuration === 'custom' && pdfStartDate && pdfEndDate) {
+          const start = new Date(pdfStartDate);
+          start.setHours(0, 0, 0, 0);
+          const end = new Date(pdfEndDate);
+          end.setHours(23, 59, 59, 999);
+          return txDate >= start && txDate <= end;
+        }
+        return true;
+      });
+
+      if (txsToExport.length === 0) {
+        toast.info('No transactions found for the selected duration.');
+        return;
+      }
+
+      // Compute Dashboard Metrics
+      const totalIncome = txsToExport
+        .filter(tx => tx.type === 'income')
+        .reduce((sum, tx) => sum + tx.amount, 0);
+
+      const totalSpend = txsToExport
+        .filter(tx => tx.type === 'expense')
+        .reduce((sum, tx) => sum + tx.amount, 0);
+
+      const netBalance = totalIncome - totalSpend;
+
+      // Expense categories breakdown
+      const expenseCategoryTotals: Record<string, number> = {};
+      txsToExport.filter(tx => tx.type === 'expense').forEach(tx => {
+        expenseCategoryTotals[tx.category] = (expenseCategoryTotals[tx.category] || 0) + tx.amount;
+      });
+      const sortedExpenseCategories = Object.entries(expenseCategoryTotals)
+        .sort((a, b) => b[1] - a[1]);
+      const expenseCategoryTable = sortedExpenseCategories.map(([cat, amt]) => {
+        const pct = totalSpend > 0 ? ((amt / totalSpend) * 100).toFixed(1) + '%' : '0%';
+        return [cat, `${currency} ${amt.toFixed(2)}`, pct];
+      });
+
+      // Income categories breakdown
+      const incomeCategoryTotals: Record<string, number> = {};
+      txsToExport.filter(tx => tx.type === 'income').forEach(tx => {
+        incomeCategoryTotals[tx.category] = (incomeCategoryTotals[tx.category] || 0) + tx.amount;
+      });
+      const sortedIncomeCategories = Object.entries(incomeCategoryTotals)
+        .sort((a, b) => b[1] - a[1]);
+      const incomeCategoryTable = sortedIncomeCategories.map(([cat, amt]) => {
+        const pct = totalIncome > 0 ? ((amt / totalIncome) * 100).toFixed(1) + '%' : '0%';
+        return [cat, `${currency} ${amt.toFixed(2)}`, pct];
+      });
+
+      // --- PAGE 1: FINANCIAL DASHBOARD & SUMMARY ---
+      doc.setFontSize(22);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(124, 58, 237); // Purple theme colors
+      doc.text('FinTrack Pro - Activity & Financial Report', 14, 20);
       
       doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
       doc.setTextColor(100);
-      doc.text(`Generated on: ${format(new Date(), 'dd MMM yyyy')}`, 14, 28);
+      
+      let dateRangeText = `Generated on: ${format(new Date(), 'dd MMM yyyy')}`;
+      if (pdfDuration !== 'all') {
+        if (pdfDuration === 'custom') {
+          dateRangeText += ` | Range: ${format(new Date(pdfStartDate), 'dd MMM yyyy')} to ${format(new Date(pdfEndDate), 'dd MMM yyyy')}`;
+        } else {
+          dateRangeText += ` | Duration: Last ${pdfDuration === '10days' ? '10 Days' : pdfDuration === '15days' ? '15 Days' : pdfDuration === '1month' ? '1 Month' : '1 Year'}`;
+        }
+      }
+      doc.text(dateRangeText, 14, 28);
+      doc.text(`Account Holder: ${profile.displayName || profile.email || 'User'}`, 14, 33);
 
-      const tableData = filteredTransactions.map(tx => [
+      // Dashboard Visual Container Cards
+      doc.setFillColor(243, 244, 246);
+      doc.rect(14, 38, 182, 32, 'F');
+
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(120, 120, 120);
+      doc.text('TOTAL INCOME', 24, 46);
+      doc.text('TOTAL SPEND', 84, 46);
+      doc.text('NET CASH FLOW', 144, 46);
+
+      doc.setFontSize(14);
+      doc.setTextColor(5, 150, 105); // emerald green
+      doc.text(`${currency} ${totalIncome.toFixed(2)}`, 24, 58);
+
+      doc.setTextColor(220, 38, 38); // red
+      doc.text(`${currency} ${totalSpend.toFixed(2)}`, 84, 58);
+
+      if (netBalance >= 0) {
+        doc.setTextColor(124, 58, 237); // purple
+      } else {
+        doc.setTextColor(220, 38, 38); // red
+      }
+      doc.text(`${currency} ${netBalance.toFixed(2)}`, 144, 58);
+
+      // Render Category charts/breakdown
+      doc.setFontSize(13);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(31, 41, 55);
+      doc.text('Expense Category Breakdown', 14, 82);
+
+      autoTable(doc, {
+        head: [['Category', 'Amount Spent', 'Percentage']],
+        body: expenseCategoryTable.length > 0 ? expenseCategoryTable : [['No expenses recorded', '-', '-']],
+        startY: 86,
+        headStyles: { fillColor: [124, 58, 237] },
+        alternateRowStyles: { fillColor: [249, 250, 251] },
+        theme: 'striped',
+        margin: { left: 14, right: 14 }
+      });
+
+      let nextSectionY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 12 : 140;
+
+      if (incomeCategoryTable.length > 0 && nextSectionY < 240) {
+        doc.setFontSize(13);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(31, 41, 55);
+        doc.text('Income Sources Breakdown', 14, nextSectionY);
+
+        autoTable(doc, {
+          head: [['Source Category', 'Amount Received', 'Percentage']],
+          body: incomeCategoryTable,
+          startY: nextSectionY + 4,
+          headStyles: { fillColor: [5, 150, 105] },
+          alternateRowStyles: { fillColor: [240, 253, 250] },
+          theme: 'striped',
+          margin: { left: 14, right: 14 }
+        });
+      }
+
+      // --- PAGE 2 ONWARDS: DETAILED TRANSACTIONS ---
+      doc.addPage();
+      doc.setFontSize(15);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(124, 58, 237);
+      doc.text('Detailed Transaction History', 14, 20);
+
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(100);
+      doc.text('Full ledger of all transactions in chronological order', 14, 26);
+
+      const tableData = txsToExport.map(tx => [
         format(tx.date.toDate(), 'yyyy-MM-dd'),
         tx.category,
         tx.description || '-',
@@ -268,10 +435,67 @@ export function Transactions({ transactions, profile, family }: TransactionsProp
       autoTable(doc, {
         head: [['Date', 'Category', 'Description', 'Type', 'Amount']],
         body: tableData,
-        startY: 35,
-        headStyles: { fillColor: [139, 92, 246] },
+        startY: 32,
+        headStyles: { fillColor: [124, 58, 237] },
         alternateRowStyles: { fillColor: [245, 245, 245] },
       });
+
+      // Report Sums and Totals at the end of transaction history
+      const endY = (doc as any).lastAutoTable?.finalY || 100;
+      let summaryY = endY + 12;
+      
+      if (summaryY > 235) {
+        doc.addPage();
+        summaryY = 22;
+      }
+
+      doc.setFillColor(243, 244, 246);
+      doc.rect(14, summaryY, 182, 45, 'F');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(31, 41, 55);
+      doc.text('REPORT TRANSACTION SUMMARY & TOTALS', 20, summaryY + 8);
+
+      doc.setDrawColor(209, 213, 219);
+      doc.line(20, summaryY + 12, 190, summaryY + 12);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9.5);
+      doc.setTextColor(75, 85, 99);
+      doc.text('Expense Transactions:', 20, summaryY + 19);
+      doc.text('Income Transactions:', 20, summaryY + 25);
+      
+      doc.setFont('helvetica', 'bold');
+      doc.text(`${txsToExport.filter(tx => tx.type === 'expense').length} items`, 85, summaryY + 19);
+      doc.text(`${txsToExport.filter(tx => tx.type === 'income').length} items`, 85, summaryY + 25);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(75, 85, 99);
+      doc.text('Total Expense Amount:', 115, summaryY + 19);
+      doc.text('Total Income Amount:', 115, summaryY + 25);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(220, 38, 38); // red
+      doc.text(`- ${currency} ${totalSpend.toFixed(2)}`, 165, summaryY + 19);
+      doc.setTextColor(5, 150, 105); // green
+      doc.text(`+ ${currency} ${totalIncome.toFixed(2)}`, 165, summaryY + 25);
+
+      doc.setDrawColor(209, 213, 219);
+      doc.line(20, summaryY + 31, 190, summaryY + 31);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10.5);
+      doc.setTextColor(31, 41, 55);
+      doc.text('NET TRANSACTION FLOW / SAVINGS:', 20, summaryY + 39);
+
+      if (netBalance >= 0) {
+        doc.setTextColor(5, 150, 105);
+        doc.text(`+ ${currency} ${netBalance.toFixed(2)}`, 150, summaryY + 39);
+      } else {
+        doc.setTextColor(220, 38, 38);
+        doc.text(`- ${currency} ${Math.abs(netBalance).toFixed(2)}`, 150, summaryY + 39);
+      }
 
       // For Android/Capacitor, standard save might fail. 
       // Using Filesystem and Share for a robust experience
@@ -310,6 +534,7 @@ export function Transactions({ transactions, profile, family }: TransactionsProp
       }
       
       toast.success('PDF report generated');
+      setIsPdfExportOpen(false);
     } catch (error) {
       console.error('PDF Export failed', error);
       toast.error('Failed to generate PDF');
@@ -399,10 +624,67 @@ export function Transactions({ transactions, profile, family }: TransactionsProp
               <TableIcon className="mr-2 h-3.5 w-3.5" />
               CSV
             </Button>
-            <Button variant="ghost" size="sm" onClick={exportPDF} className="h-8 rounded-lg font-bold text-xs dark:text-white dark:hover:bg-white/10">
-              <FileText className="mr-2 h-3.5 w-3.5" />
-              PDF
-            </Button>
+            <Dialog open={isPdfExportOpen} onOpenChange={setIsPdfExportOpen}>
+              <DialogTrigger render={
+                <Button variant="ghost" size="sm" className="h-8 rounded-lg font-bold text-xs dark:text-white dark:hover:bg-white/10">
+                  <FileText className="mr-2 h-3.5 w-3.5" />
+                  PDF
+                </Button>
+              } />
+              <DialogContent className="glass border border-white/20 shadow-2xl rounded-[2.5rem] dark:bg-zinc-900/90 max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="text-2xl font-black tracking-tight dark:text-white">Export PDF Report</DialogTitle>
+                  <DialogDescription className="font-medium">
+                    Select the duration of transactions to include in your PDF report.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label className="text-xs font-bold uppercase tracking-wider ml-1 dark:text-white/70">Duration</Label>
+                    <Select value={pdfDuration} onValueChange={(v: any) => setPdfDuration(v)}>
+                      <SelectTrigger className="h-12 rounded-2xl border font-bold dark:bg-black/20 dark:border-white/10 dark:text-white">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-xl dark:bg-zinc-900 dark:border-white/10 dark:text-white">
+                        <SelectItem value="all" className="font-bold">All Transactions</SelectItem>
+                        <SelectItem value="10days" className="font-bold">Last 10 Days</SelectItem>
+                        <SelectItem value="15days" className="font-bold">Last 15 Days</SelectItem>
+                        <SelectItem value="1month" className="font-bold">Last 1 Month</SelectItem>
+                        <SelectItem value="1year" className="font-bold">Last 1 Year</SelectItem>
+                        <SelectItem value="custom" className="font-bold">Custom Date Range</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {pdfDuration === 'custom' && (
+                    <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                      <div className="space-y-2">
+                        <Label className="text-xs font-bold uppercase tracking-wider ml-1 dark:text-white/70">Start Date</Label>
+                        <Input 
+                          type="date" 
+                          value={pdfStartDate} 
+                          onChange={(e) => setPdfStartDate(e.target.value)} 
+                          className="h-12 rounded-xl border-2 dark:bg-black/20 dark:border-white/10 dark:text-white font-bold" 
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs font-bold uppercase tracking-wider ml-1 dark:text-white/70">End Date</Label>
+                        <Input 
+                          type="date" 
+                          value={pdfEndDate} 
+                          onChange={(e) => setPdfEndDate(e.target.value)} 
+                          className="h-12 rounded-xl border-2 dark:bg-black/20 dark:border-white/10 dark:text-white font-bold" 
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <DialogFooter className="flex gap-2">
+                  <Button variant="outline" onClick={() => setIsPdfExportOpen(false)} className="rounded-xl border-2 font-bold h-12">Cancel</Button>
+                  <Button onClick={exportPDF} className="flex-1 h-12 font-black rounded-xl shadow-lg shadow-primary/20">Generate PDF</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
       </div>

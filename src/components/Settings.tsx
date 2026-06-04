@@ -40,7 +40,9 @@ import {
   Users,
   Fingerprint,
   MessageSquare,
-  RefreshCw
+  RefreshCw,
+  Camera,
+  Trash2
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { toast } from 'sonner';
@@ -64,6 +66,109 @@ export function Settings({ profile, onCheckForUpdates }: SettingsProps) {
   const [newCategory, setNewCategory] = useState('');
   const [newAccount, setNewAccount] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Profile image upload state
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(profile.photoURL || null);
+  const [isDragActive, setIsDragActive] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Sync profile data when dialog status changes
+  React.useEffect(() => {
+    if (isEditProfileOpen) {
+      setDisplayName(profile.displayName || '');
+      setPhotoURL(profile.photoURL || '');
+      setPhotoPreview(profile.photoURL || null);
+    }
+  }, [isEditProfileOpen, profile]);
+
+  const processAndCompressFile = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file');
+      return;
+    }
+
+    setPhotoUploading(true);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+          const img = new globalThis.Image();
+          img.src = event.target?.result as string;
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 150;
+            const MAX_HEIGHT = 150;
+            let width = img.width;
+            let height = img.height;
+
+            if (width > height) {
+              if (width > MAX_WIDTH) {
+                height *= MAX_WIDTH / width;
+                width = MAX_WIDTH;
+              }
+            } else {
+              if (height > MAX_HEIGHT) {
+                width *= MAX_HEIGHT / height;
+                height = MAX_HEIGHT;
+              }
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, width, height);
+              const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+              resolve(dataUrl);
+            } else {
+              resolve(event.target?.result as string);
+            }
+          };
+          img.onerror = (err) => reject(err);
+        };
+        reader.onerror = (error) => reject(error);
+      });
+
+      setPhotoURL(base64);
+      setPhotoPreview(base64);
+      toast.success('Profile photo processed successfully!');
+    } catch (error) {
+      console.error('Image compression error:', error);
+      toast.error('Failed to process image');
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      await processAndCompressFile(file);
+    }
+  };
+
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setIsDragActive(true);
+    } else if (e.type === "dragleave") {
+      setIsDragActive(false);
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragActive(false);
+
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      await processAndCompressFile(file);
+    }
+  };
 
   const handleUpdateProfile = async () => {
     setLoading(true);
@@ -226,6 +331,70 @@ export function Settings({ profile, onCheckForUpdates }: SettingsProps) {
                     <DialogDescription className="font-medium">Update your profile information.</DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4 py-4">
+                    {/* Direct Upload Component */}
+                    <div className="flex flex-col items-center justify-center gap-4 p-5 border border-white/10 rounded-3xl bg-black/10 dark:bg-zinc-800/10">
+                      <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Profile Photo</Label>
+                      
+                      <div 
+                        onDragEnter={handleDrag}
+                        onDragOver={handleDrag}
+                        onDragLeave={handleDrag}
+                        onDrop={handleDrop}
+                        onClick={() => fileInputRef.current?.click()}
+                        className={`relative group cursor-pointer rounded-full p-1 border-2 border-dashed transition-all duration-300 ${
+                          isDragActive ? 'border-primary bg-primary/10 scale-105' : 'border-muted-foreground/30 hover:border-primary/50'
+                        } flex items-center justify-center`}
+                      >
+                        <Avatar className="h-24 w-24 border-2 border-background shadow-xl transition-transform duration-300 group-hover:scale-102">
+                          <AvatarImage src={photoPreview || ''} />
+                          <AvatarFallback className="bg-primary/10 text-primary text-3xl font-black">
+                            {displayName?.[0]?.toUpperCase() || profile?.displayName?.[0]?.toUpperCase() || profile?.email?.[0]?.toUpperCase() || 'U'}
+                          </AvatarFallback>
+                        </Avatar>
+                        
+                        <div className="absolute inset-1 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-center text-white text-[10px] font-black uppercase tracking-wider gap-1">
+                          <Camera className="h-5 w-5" />
+                          <span>Change</span>
+                        </div>
+                        
+                        {photoUploading && (
+                          <div className="absolute inset-1 rounded-full bg-black/70 flex items-center justify-center">
+                            <span className="text-white text-[10px] font-bold">Optimizing...</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <input 
+                        type="file" 
+                        ref={fileInputRef} 
+                        onChange={handlePhotoUpload} 
+                        accept="image/*" 
+                        className="hidden" 
+                      />
+
+                      <div className="text-center">
+                        <p className="text-xs text-muted-foreground font-semibold">
+                          Drag & drop or Click to upload
+                        </p>
+                        {photoPreview && (
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPhotoURL('');
+                              setPhotoPreview(null);
+                              toast.info('Selected photo removed (save changes to apply)');
+                            }} 
+                            className="text-xs text-red-500 font-bold hover:bg-red-500/10 mt-1.5 h-8 px-3 rounded-xl"
+                          >
+                            <Trash2 className="h-3.5 w-3.5 mr-1" /> Remove Photo
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+
                     <div className="space-y-2">
                       <Label className="text-xs font-bold uppercase tracking-wider ml-1">Display Name</Label>
                       <Input 
@@ -235,13 +404,19 @@ export function Settings({ profile, onCheckForUpdates }: SettingsProps) {
                         className="h-12 rounded-xl border-2" 
                       />
                     </div>
+
                     <div className="space-y-2">
-                      <Label className="text-xs font-bold uppercase tracking-wider ml-1">Photo URL</Label>
+                      <Label className="text-xs font-bold uppercase tracking-wider ml-1 text-muted-foreground/80">Or Photo URL (Optional)</Label>
                       <Input 
-                        value={photoURL} 
-                        onChange={(e) => setPhotoURL(e.target.value)} 
+                        value={photoURL?.startsWith('data:') ? 'Uploaded base64 image content' : photoURL} 
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setPhotoURL(val);
+                          setPhotoPreview(val);
+                        }} 
+                        disabled={photoURL?.startsWith('data:')}
                         placeholder="https://example.com/photo.jpg" 
-                        className="h-12 rounded-xl border-2" 
+                        className="h-12 rounded-xl border-2 text-xs font-medium" 
                       />
                     </div>
                   </div>

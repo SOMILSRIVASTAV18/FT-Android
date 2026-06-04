@@ -138,7 +138,7 @@ export default function App() {
   useEffect(() => {
     if (Capacitor.getPlatform() === 'web') return;
 
-    const backButtonListener = CapacitorApp.addListener('backButton', ({ canGoBack }) => {
+    const backButtonListenerPromise = CapacitorApp.addListener('backButton', ({ canGoBack }) => {
       // If we are in a mobile view/menu, close it first
       if (isMobileMenuOpen) {
         setIsMobileMenuOpen(false);
@@ -162,7 +162,7 @@ export default function App() {
     });
 
     return () => {
-      backButtonListener.remove();
+      backButtonListenerPromise.then(handle => handle.remove());
     };
   }, [activeTab, isMobileMenuOpen, isSidebarOpen]);
 
@@ -719,10 +719,10 @@ export default function App() {
   };
 
   return (
-    <div className={cn("min-h-screen flex flex-col md:flex-row bg-background selection:bg-primary/30", profile?.settings.darkMode && "dark")}>
+    <div className={cn("min-h-screen md:h-screen md:overflow-hidden flex flex-col md:flex-row bg-background selection:bg-primary/30", profile?.settings.darkMode && "dark")}>
       {isLocked && <LockScreen onUnlock={() => setIsLocked(false)} />}
       {/* Sidebar for Desktop */}
-      <aside className="hidden md:flex flex-col w-72 border-r bg-card/50 backdrop-blur-xl sticky top-0 h-screen">
+      <aside className="hidden md:flex flex-col w-72 border-r bg-card/50 backdrop-blur-xl sticky top-0 h-screen overflow-y-auto flex-shrink-0">
         <div className="p-8">
           <Logo showText size="lg" className="mb-6" />
           
@@ -792,7 +792,7 @@ export default function App() {
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto p-4 md:p-10 pb-32 md:pb-10 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-primary/5 via-transparent to-transparent">
+      <main className="flex-1 overflow-y-auto scroll-smooth p-4 md:p-10 pb-32 md:pb-10 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-primary/5 via-transparent to-transparent">
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}

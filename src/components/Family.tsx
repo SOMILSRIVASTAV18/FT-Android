@@ -23,6 +23,22 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogTrigger,
+  DialogFooter,
+  DialogDescription
+} from '@/components/ui/dialog';
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from '@/components/ui/select';
 import { FamilyRequest, AppNotification, Transaction } from '../types';
 import { NativeService } from '../lib/native';
 import { jsPDF } from 'jspdf';
@@ -63,6 +79,12 @@ export function FamilyView({ profile, family, transactions }: FamilyViewProps) {
   const [members, setMembers] = useState<any[]>([]);
   const [pendingRequests, setPendingRequests] = useState<FamilyRequest[]>([]);
   const [myRequest, setMyRequest] = useState<FamilyRequest | null>(null);
+
+  // PDF Export state and filters
+  const [isPdfExportOpen, setIsPdfExportOpen] = useState(false);
+  const [pdfDuration, setPdfDuration] = useState<'10days' | '15days' | '1month' | '1year' | 'custom' | 'all'>('all');
+  const [pdfStartDate, setPdfStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [pdfEndDate, setPdfEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
 
   useEffect(() => {
     if (!family) {
@@ -347,12 +369,87 @@ export function FamilyView({ profile, family, transactions }: FamilyViewProps) {
   }, [transactions, family, members]);
 
   const generatePDF = async () => {
-    if (!family || !detailedSummary) return;
+    if (!family) return;
     try {
       const doc = new jsPDF();
       const dateStr = format(new Date(), 'dd MMM yyyy');
       const isAdmin = family.ownerId === profile.uid;
+
+      // Filter family transactions based on chosen duration
+      const filteredFamilyTxs = transactions.filter(tx => {
+        const isFam = tx.familyId === family.id || tx.isFamily;
+        if (!isFam) return false;
+
+        const txDate = tx.date.toDate();
+        const now = new Date();
+        if (pdfDuration === '10days') {
+          const limit = new Date();
+          limit.setDate(now.getDate() - 10);
+          return txDate >= limit;
+        }
+        if (pdfDuration === '15days') {
+          const limit = new Date();
+          limit.setDate(now.getDate() - 15);
+          return txDate >= limit;
+        }
+        if (pdfDuration === '1month') {
+          const limit = new Date();
+          limit.setMonth(now.getMonth() - 1);
+          return txDate >= limit;
+        }
+        if (pdfDuration === '1year') {
+          const limit = new Date();
+          limit.setFullYear(now.getFullYear() - 1);
+          return txDate >= limit;
+        }
+        if (pdfDuration === 'custom' && pdfStartDate && pdfEndDate) {
+          const start = new Date(pdfStartDate);
+          start.setHours(0, 0, 0, 0);
+          const end = new Date(pdfEndDate);
+          end.setHours(23, 59, 59, 999);
+          return txDate >= start && txDate <= end;
+        }
+        return true;
+      });
+
+      if (filteredFamilyTxs.length === 0) {
+        toast.info('No family transactions found for the selected duration.');
+        return;
+      }
+
+      // Compute dynamic detailedSummary for the PDF
+      const expenseTxs = filteredFamilyTxs.filter(tx => tx.type === 'expense');
+      const categories = Array.from(new Set(expenseTxs.map(tx => tx.category))).sort();
       
+      const memberMatrix = members.map(member => {
+        const memberTxs = expenseTxs.filter(tx => tx.userId === member.uid);
+        const spendings: Record<string, number> = {};
+        let total = 0;
+        
+        categories.forEach(cat => {
+          const catTotal = memberTxs.filter(tx => tx.category === cat).reduce((acc, tx) => acc + tx.amount, 0);
+          spendings[cat] = catTotal;
+          total += catTotal;
+        });
+        
+        return {
+          uid: member.uid,
+          name: member.displayName || member.email,
+          spendings,
+          total
+        };
+      });
+
+      const categoryTotals: Record<string, number> = {};
+      let grandTotal = 0;
+      categories.forEach(cat => {
+        const total = memberMatrix.reduce((acc, m) => acc + m.spendings[cat], 0);
+        categoryTotals[cat] = total;
+        grandTotal += total;
+      });
+
+      const pdfSummary = { categories, memberMatrix, categoryTotals, grandTotal };
+
       doc.setFontSize(22);
       doc.setTextColor(139, 92, 246);
       doc.text(`${family.name} - Family Report`, 14, 22);
@@ -361,13 +458,23 @@ export function FamilyView({ profile, family, transactions }: FamilyViewProps) {
       doc.setTextColor(100);
       doc.text(`Generated on: ${dateStr}`, 14, 30);
 
+      let rangeText = "";
+      if (pdfDuration !== 'all') {
+        if (pdfDuration === 'custom') {
+          rangeText = `Range: ${format(new Date(pdfStartDate), 'dd MMM yyyy')} to ${format(new Date(pdfEndDate), 'dd MMM yyyy')}`;
+        } else {
+          rangeText = `Duration: Last ${pdfDuration === '10days' ? '10 Days' : pdfDuration === '15days' ? '15 Days' : pdfDuration === '1month' ? '1 Month' : '1 Year'}`;
+        }
+        doc.text(rangeText, 14, 35);
+      }
+
       // Member Category Summaries
       doc.setFontSize(14);
       doc.setTextColor(0);
-      doc.text('Member Category Summaries', 14, 45);
+      doc.text('Member Category Summaries', 14, rangeText ? 48 : 45);
 
-      let currentY = 50;
-      detailedSummary.memberMatrix.forEach(m => {
+      let currentY = rangeText ? 53 : 50;
+      pdfSummary.memberMatrix.forEach(m => {
         if (currentY > 250) {
           doc.addPage();
           currentY = 20;
@@ -378,7 +485,7 @@ export function FamilyView({ profile, family, transactions }: FamilyViewProps) {
         doc.text(`${m.name} - Total: ${profile.settings.currency}${m.total.toFixed(2)}`, 14, currentY);
         currentY += 7;
 
-        const memberBody = detailedSummary.categories
+        const memberBody = pdfSummary.categories
           .filter(cat => m.spendings[cat] > 0)
           .map(cat => [cat, `${profile.settings.currency}${m.spendings[cat].toFixed(2)}`]);
 
@@ -406,11 +513,11 @@ export function FamilyView({ profile, family, transactions }: FamilyViewProps) {
       doc.setFontSize(16);
       doc.text('Overall Family Summary', 14, 22);
       
-      const overallBody = detailedSummary.categories.map(cat => [
+      const overallBody = pdfSummary.categories.map(cat => [
         cat,
-        `${profile.settings.currency}${detailedSummary.categoryTotals[cat].toFixed(2)}`
+        `${profile.settings.currency}${pdfSummary.categoryTotals[cat].toFixed(2)}`
       ]);
-      overallBody.push(['TOTAL', `${profile.settings.currency}${detailedSummary.grandTotal.toFixed(2)}`]);
+      overallBody.push(['TOTAL', `${profile.settings.currency}${pdfSummary.grandTotal.toFixed(2)}`]);
 
       autoTable(doc, {
         startY: 30,
@@ -422,7 +529,7 @@ export function FamilyView({ profile, family, transactions }: FamilyViewProps) {
 
       // Transaction Details (Admin Only)
       if (isAdmin) {
-        const familyTxs = transactions.filter(tx => tx.familyId === family.id || tx.isFamily);
+        const familyTxs = filteredFamilyTxs;
         doc.addPage();
         doc.setFontSize(14);
         doc.text('Detailed Transaction History (Admin Only)', 14, 22);
@@ -477,6 +584,7 @@ export function FamilyView({ profile, family, transactions }: FamilyViewProps) {
         doc.save(`${family.name}_Family_Report.pdf`);
       }
       toast.success('PDF Report generated!');
+      setIsPdfExportOpen(false);
     } catch (error) {
       console.error('PDF Error:', error);
       toast.error('Failed to generate PDF');
@@ -634,7 +742,7 @@ export function FamilyView({ profile, family, transactions }: FamilyViewProps) {
         <Card className="md:col-span-2 border-none glass shadow-xl rounded-[2rem]">
           <CardHeader className="flex flex-row items-center justify-between p-5 md:p-6">
             <CardTitle className="text-xl md:text-2xl font-black tracking-tight dark:text-white">Members</CardTitle>
-            <Button onClick={generatePDF} size="sm" className="rounded-xl font-bold h-8 md:h-9 text-xs">
+            <Button onClick={() => setIsPdfExportOpen(true)} size="sm" className="rounded-xl font-bold h-8 md:h-9 text-xs">
               <Download className="mr-1.5 md:mr-2 h-3.5 w-3.5 md:h-4 md:w-4" />
               Report
             </Button>
@@ -818,6 +926,62 @@ export function FamilyView({ profile, family, transactions }: FamilyViewProps) {
           </Card>
         )}
       </div>
+
+      <Dialog open={isPdfExportOpen} onOpenChange={setIsPdfExportOpen}>
+        <DialogContent className="glass border border-white/20 shadow-2xl rounded-[2.5rem] dark:bg-zinc-900/90 max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-black tracking-tight dark:text-white">Export Family PDF</DialogTitle>
+            <DialogDescription className="font-medium">
+              Select the duration of family transactions and summaries to include in your PDF report.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label className="text-xs font-bold uppercase tracking-wider ml-1 dark:text-white/70">Duration</Label>
+              <Select value={pdfDuration} onValueChange={(v: any) => setPdfDuration(v)}>
+                <SelectTrigger className="h-12 rounded-2xl border font-bold dark:bg-black/20 dark:border-white/10 dark:text-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="rounded-xl dark:bg-zinc-900 dark:border-white/10 dark:text-white">
+                  <SelectItem value="all" className="font-bold">All Transactions</SelectItem>
+                  <SelectItem value="10days" className="font-bold">Last 10 Days</SelectItem>
+                  <SelectItem value="15days" className="font-bold">Last 15 Days</SelectItem>
+                  <SelectItem value="1month" className="font-bold">Last 1 Month</SelectItem>
+                  <SelectItem value="1year" className="font-bold">Last 1 Year</SelectItem>
+                  <SelectItem value="custom" className="font-bold">Custom Date Range</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {pdfDuration === 'custom' && (
+              <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-wider ml-1 dark:text-white/70">Start Date</Label>
+                  <Input 
+                    type="date" 
+                    value={pdfStartDate} 
+                    onChange={(e) => setPdfStartDate(e.target.value)} 
+                    className="h-12 rounded-xl border-2 dark:bg-black/20 dark:border-white/10 dark:text-white font-bold" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-wider ml-1 dark:text-white/70">End Date</Label>
+                  <Input 
+                    type="date" 
+                    value={pdfEndDate} 
+                    onChange={(e) => setPdfEndDate(e.target.value)} 
+                    className="h-12 rounded-xl border-2 dark:bg-black/20 dark:border-white/10 dark:text-white font-bold" 
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="flex gap-2">
+            <Button variant="outline" onClick={() => setIsPdfExportOpen(false)} className="rounded-xl border-2 font-bold h-12">Cancel</Button>
+            <Button onClick={generatePDF} className="flex-1 h-12 font-black rounded-xl shadow-lg shadow-primary/20">Generate PDF</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

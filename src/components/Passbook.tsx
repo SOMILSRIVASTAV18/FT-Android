@@ -14,6 +14,23 @@ import autoTable from 'jspdf-autotable';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogTrigger,
+  DialogFooter,
+  DialogDescription
+} from '@/components/ui/dialog';
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 
 interface PassbookProps {
   userId: string;
@@ -24,6 +41,18 @@ export function Passbook({ userId, profile }: PassbookProps) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [search, setSearch] = useState('');
   const currency = profile.settings.currency || 'INR';
+
+  // PDF Export state and filters
+  const [isPdfExportOpen, setIsPdfExportOpen] = useState(false);
+  const [targetAccountForExport, setTargetAccountForExport] = useState<string>('');
+  const [pdfDuration, setPdfDuration] = useState<'10days' | '15days' | '1month' | '1year' | 'custom' | 'all'>('all');
+  const [pdfStartDate, setPdfStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [pdfEndDate, setPdfEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+
+  const handleOpenPdfExport = (account: string) => {
+    setTargetAccountForExport(account);
+    setIsPdfExportOpen(true);
+  };
 
   useEffect(() => {
     const q = query(
@@ -75,6 +104,45 @@ export function Passbook({ userId, profile }: PassbookProps) {
       const doc = new jsPDF();
       const accountTxs = accountGroups[account] || [];
       
+      // Filter transactions based on selection duration
+      const txsToExport = accountTxs.filter(tx => {
+        const txDate = tx.date.toDate();
+        const now = new Date();
+        if (pdfDuration === '10days') {
+          const limit = new Date();
+          limit.setDate(now.getDate() - 10);
+          return txDate >= limit;
+        }
+        if (pdfDuration === '15days') {
+          const limit = new Date();
+          limit.setDate(now.getDate() - 15);
+          return txDate >= limit;
+        }
+        if (pdfDuration === '1month') {
+          const limit = new Date();
+          limit.setMonth(now.getMonth() - 1);
+          return txDate >= limit;
+        }
+        if (pdfDuration === '1year') {
+          const limit = new Date();
+          limit.setFullYear(now.getFullYear() - 1);
+          return txDate >= limit;
+        }
+        if (pdfDuration === 'custom' && pdfStartDate && pdfEndDate) {
+          const start = new Date(pdfStartDate);
+          start.setHours(0, 0, 0, 0);
+          const end = new Date(pdfEndDate);
+          end.setHours(23, 59, 59, 999);
+          return txDate >= start && txDate <= end;
+        }
+        return true;
+      });
+
+      if (txsToExport.length === 0) {
+        toast.info('No transactions found for the selected duration.');
+        return;
+      }
+
       doc.setFontSize(22);
       doc.setTextColor(139, 92, 246);
       doc.text(`${account} Passbook`, 14, 20);
@@ -82,9 +150,18 @@ export function Passbook({ userId, profile }: PassbookProps) {
       doc.setFontSize(10);
       doc.setTextColor(100);
       doc.text(`Generated for: ${profile?.displayName || profile?.email || 'User'}`, 14, 28);
-      doc.text(`Date: ${format(new Date(), 'dd MMM yyyy, HH:mm')}`, 14, 33);
 
-      const tableData = accountTxs.map(tx => [
+      let dateRangeText = `Date: ${format(new Date(), 'dd MMM yyyy, HH:mm')}`;
+      if (pdfDuration !== 'all') {
+        if (pdfDuration === 'custom') {
+          dateRangeText += ` | Range: ${format(new Date(pdfStartDate), 'dd MMM yyyy')} to ${format(new Date(pdfEndDate), 'dd MMM yyyy')}`;
+        } else {
+          dateRangeText += ` | Duration: Last ${pdfDuration === '10days' ? '10 Days' : pdfDuration === '15days' ? '15 Days' : pdfDuration === '1month' ? '1 Month' : '1 Year'}`;
+        }
+      }
+      doc.text(dateRangeText, 14, 33);
+
+      const tableData = txsToExport.map(tx => [
         format(tx.date.toDate(), 'yyyy-MM-dd'),
         tx.category,
         tx.description || '-',
@@ -131,6 +208,7 @@ export function Passbook({ userId, profile }: PassbookProps) {
         }
       }
       toast.success('Passbook exported successfully');
+      setIsPdfExportOpen(false);
     } catch (error) {
       console.error('PDF Export failed', error);
       toast.error('Failed to generate PDF');
@@ -173,7 +251,7 @@ export function Passbook({ userId, profile }: PassbookProps) {
                   variant="ghost" 
                   size="icon" 
                   className="h-8 w-8 rounded-lg text-primary hover:bg-primary/10"
-                  onClick={() => exportPDF(stat.account)}
+                  onClick={() => handleOpenPdfExport(stat.account)}
                 >
                   <Download className="h-4 w-4" />
                 </Button>
@@ -232,7 +310,7 @@ export function Passbook({ userId, profile }: PassbookProps) {
                 variant="outline" 
                 size="sm" 
                 className="rounded-xl border-2 font-bold h-10 px-4"
-                onClick={() => exportPDF(account)}
+                onClick={() => handleOpenPdfExport(account)}
               >
                 <FileText className="mr-2 h-4 w-4" />
                 Export {account} PDF
@@ -246,6 +324,62 @@ export function Passbook({ userId, profile }: PassbookProps) {
           </TabsContent>
         ))}
       </Tabs>
+
+      <Dialog open={isPdfExportOpen} onOpenChange={setIsPdfExportOpen}>
+        <DialogContent className="glass border border-white/20 shadow-2xl rounded-[2.5rem] dark:bg-zinc-900/90 max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-black tracking-tight dark:text-white">Export Passbook PDF</DialogTitle>
+            <DialogDescription className="font-medium">
+              Select the duration of transactions to include in your {targetAccountForExport} passbook report.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label className="text-xs font-bold uppercase tracking-wider ml-1 dark:text-white/70">Duration</Label>
+              <Select value={pdfDuration} onValueChange={(v: any) => setPdfDuration(v)}>
+                <SelectTrigger className="h-12 rounded-2xl border font-bold dark:bg-black/20 dark:border-white/10 dark:text-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="rounded-xl dark:bg-zinc-900 dark:border-white/10 dark:text-white">
+                  <SelectItem value="all" className="font-bold">All Transactions</SelectItem>
+                  <SelectItem value="10days" className="font-bold">Last 10 Days</SelectItem>
+                  <SelectItem value="15days" className="font-bold">Last 15 Days</SelectItem>
+                  <SelectItem value="1month" className="font-bold">Last 1 Month</SelectItem>
+                  <SelectItem value="1year" className="font-bold">Last 1 Year</SelectItem>
+                  <SelectItem value="custom" className="font-bold">Custom Date Range</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {pdfDuration === 'custom' && (
+              <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-wider ml-1 dark:text-white/70">Start Date</Label>
+                  <Input 
+                    type="date" 
+                    value={pdfStartDate} 
+                    onChange={(e) => setPdfStartDate(e.target.value)} 
+                    className="h-12 rounded-xl border-2 dark:bg-black/20 dark:border-white/10 dark:text-white font-bold" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-wider ml-1 dark:text-white/70">End Date</Label>
+                  <Input 
+                    type="date" 
+                    value={pdfEndDate} 
+                    onChange={(e) => setPdfEndDate(e.target.value)} 
+                    className="h-12 rounded-xl border-2 dark:bg-black/20 dark:border-white/10 dark:text-white font-bold" 
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="flex gap-2">
+            <Button variant="outline" onClick={() => setIsPdfExportOpen(false)} className="rounded-xl border-2 font-bold h-12">Cancel</Button>
+            <Button onClick={() => exportPDF(targetAccountForExport)} className="flex-1 h-12 font-black rounded-xl shadow-lg shadow-primary/20">Generate PDF</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
