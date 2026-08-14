@@ -1,0 +1,5 @@
+/android/app/build.gradle to update os build 
+
+src/constants.ts app update build and version
+
+package.json bass update karna hai

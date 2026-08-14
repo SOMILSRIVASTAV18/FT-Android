@@ -1,0 +1,199 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (
+          (request.auth.token.email == "somilsrivastav18@gmail.com" && request.auth.token.email_verified == true) ||
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+        );
+    }
+
+    // Domain Validators
+    function isValidUser(data) {
+      return data.uid == request.auth.uid &&
+             data.email is string;
+    }
+
+    function isValidFamily(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.code is string && data.code.size() > 0 && data.code.size() < 50 &&
+             data.ownerId is string &&
+             data.members is list;
+    }
+
+    function isValidTransaction(data) {
+      return data.userId is string &&
+             data.amount is number &&
+             data.type in ['income', 'expense'] &&
+             data.category is string &&
+             data.date is timestamp &&
+             data.isFamily is bool;
+    }
+
+    function isValidBudget(data) {
+      return data.userId is string &&
+             data.category is string &&
+             data.limit is number &&
+             data.period == 'monthly';
+    }
+
+    function isValidFinancialGoal(data) {
+      return data.userId is string &&
+             data.name is string && data.name.size() > 0 &&
+             data.targetAmount is number &&
+             data.currentAmount is number &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidBill(data) {
+      return data.userId is string &&
+             data.name is string && data.name.size() > 0 &&
+             data.amount is number &&
+             data.dueDate is timestamp &&
+             data.status in ['unpaid', 'paid'] &&
+             data.isRecurring is bool;
+    }
+
+    function isValidSubscription(data) {
+      return data.userId is string &&
+             data.name is string && data.name.size() > 0 &&
+             data.amount is number &&
+             data.billingCycle in ['monthly', 'yearly'] &&
+             data.nextBillingDate is timestamp &&
+             data.isActive is bool;
+    }
+
+    function isValidFamilyRequest(data) {
+      return data.familyId is string &&
+             data.userId is string &&
+             data.status in ['pending', 'approved', 'rejected'] &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidSplitGroup(data) {
+      return data.name is string &&
+             data.members is list &&
+             data.code is string &&
+             data.createdAt is timestamp &&
+             data.ownerId == request.auth.uid;
+    }
+
+    function isValidSplitExpense(data) {
+      return data.groupId is string &&
+             data.payerId is string &&
+             data.amount is number &&
+             data.description is string &&
+             data.date is timestamp &&
+             data.splitType in ['equal', 'exact', 'settlement'] &&
+             data.splits is map;
+    }
+
+    // Rules
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) || (isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['familyId']));
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    match /families/{familyId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidFamily(request.resource.data) && request.resource.data.ownerId == request.auth.uid;
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
+    }
+
+    match /transactions/{transactionId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidTransaction(request.resource.data) && request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || resource.data.familyId != null);
+      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || resource.data.familyId != null);
+    }
+
+    match /budgets/{budgetId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid && isValidBudget(request.resource.data);
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    match /invites/{inviteId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /familyRequests/{requestId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidFamilyRequest(request.resource.data) && request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    match /notifications/{notificationId} {
+      allow read, update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated();
+    }
+
+    match /dues/{dueId} {
+      allow read, update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /splitGroups/{groupId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidSplitGroup(request.resource.data) && request.resource.data.ownerId == request.auth.uid;
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    match /splitExpenses/{expenseId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidSplitExpense(request.resource.data);
+      allow update, delete: if isAuthenticated();
+    }
+
+    match /smsPassbook/{smsId} {
+      allow read, update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /goals/{goalId} {
+      allow read, update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && isValidFinancialGoal(request.resource.data) && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /bills/{billId} {
+      allow read, update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && isValidBill(request.resource.data) && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /subscriptions/{subId} {
+      allow read, update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && isValidSubscription(request.resource.data) && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /assets/{assetId} {
+      allow read, update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /liabilities/{liabilityId} {
+      allow read, update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /test/connection {
+      allow read: if true;
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "FinTrack Pro 2",
+  "description": "A comprehensive personal and family finance tracker with budget alerts, data visualization, and export capabilities.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

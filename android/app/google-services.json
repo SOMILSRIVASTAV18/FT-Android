@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "62768434499",
+    "project_id": "somilsrivastava-port",
+    "storage_bucket": "somilsrivastava-port.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:62768434499:android:d5feec86d74796a7f433f6",
+        "android_client_info": {
+          "package_name": "com.Thinkhat.finta"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "62768434499-vlf4rhsnp00t6ea0klgsfoit16ccaeao.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC5MeAX_pF4ZF5uDKAEBgWnSVCRxCmOHQY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "62768434499-vlf4rhsnp00t6ea0klgsfoit16ccaeao.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
