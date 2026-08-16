@@ -1,10 +1,17 @@
-import React, { useState } from 'react';
-import { auth, googleProvider, signInWithPopup, signInWithRedirect, signInWithCredential, GoogleAuthProvider } from '../lib/firebase';
+import React, { useState, useEffect } from 'react';
+import { 
+  auth, 
+  googleProvider, 
+  signInWithPopup, 
+  signInWithRedirect, 
+  getRedirectResult, 
+  signInWithCredential, 
+  GoogleAuthProvider 
+} from '../lib/firebase';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowRight, Lock, Mail, CheckCircle2, Shield, Sparkles, QrCode } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Shield, QrCode, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, sendEmailVerification } from 'firebase/auth';
 import { toast } from 'sonner';
 import { Capacitor } from '@capacitor/core';
@@ -13,9 +20,13 @@ import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 import { Logo } from './Logo';
 import { motion } from 'motion/react';
 
-// Initialize Google Auth for native
+// Initialize Google Auth for native Capacitor platform
 if (Capacitor.isNativePlatform()) {
-  GoogleAuth.initialize();
+  try {
+    GoogleAuth.initialize();
+  } catch (e) {
+    console.warn('Native GoogleAuth initialization skipped/failed', e);
+  }
 }
 
 function GoogleIcon({ className = "w-5 h-5" }: { className?: string }) {
@@ -45,7 +56,25 @@ export function Auth() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // Check for returning redirect login result on mount
+  useEffect(() => {
+    let isMounted = true;
+    getRedirectResult(auth)
+      .then((result) => {
+        if (isMounted && result?.user) {
+          toast.success(`Welcome ${result.user.displayName || result.user.email || 'back'}!`);
+        }
+      })
+      .catch((err) => {
+        console.warn('Redirect result check error:', err);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleGoogleLogin = async () => {
     setLoading(true);
@@ -57,12 +86,23 @@ export function Auth() {
         }
         const credential = GoogleAuthProvider.credential(user.authentication.idToken);
         await signInWithCredential(auth, credential);
+        toast.success('Signed in with Google');
       } else {
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        if (isMobile) {
-          await signInWithRedirect(auth, googleProvider);
-        } else {
-          await signInWithPopup(auth, googleProvider);
+        // Use popup for all web views (mobile browsers, desktop browsers, and sandboxed iframes)
+        try {
+          const result = await signInWithPopup(auth, googleProvider);
+          if (result.user) {
+            toast.success(`Signed in as ${result.user.displayName || result.user.email}`);
+          }
+        } catch (popupError: any) {
+          const code = popupError?.code || '';
+          // If popup is strictly blocked by a mobile browser setting, try redirect as fallback
+          if (code === 'auth/popup-blocked') {
+            toast.info('Opening Google sign-in...');
+            await signInWithRedirect(auth, googleProvider);
+          } else {
+            throw popupError;
+          }
         }
       }
     } catch (error: any) {
@@ -85,6 +125,8 @@ export function Auth() {
         message = 'Network error. Please check your connection.';
       } else if (errMsg.includes('unauthorized-domain') || errCode === 'auth/unauthorized-domain') {
         message = 'This domain is not authorized in Firebase Auth settings.';
+      } else if (error?.message) {
+        message = error.message;
       }
       toast.error(message);
     } finally {
@@ -95,11 +137,13 @@ export function Auth() {
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanEmail = email.trim();
+    const cleanPassword = password;
+
     if (!cleanEmail) {
       toast.error('Please enter your email address');
       return;
     }
-    if (!password) {
+    if (!cleanPassword) {
       toast.error('Please enter your password');
       return;
     }
@@ -107,12 +151,13 @@ export function Auth() {
     setLoading(true);
     try {
       if (isLogin) {
-        await signInWithEmailAndPassword(auth, cleanEmail, password);
+        await signInWithEmailAndPassword(auth, cleanEmail, cleanPassword);
+        toast.success('Signed in successfully');
       } else {
-        const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+        const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPassword);
         try {
           await sendEmailVerification(userCredential.user);
-          toast.success('Account created! A verification link has been sent to your email.');
+          toast.success('Account created! Verification link sent to your email.');
         } catch (verErr: any) {
           console.warn('Failed to send initial verification email:', verErr);
           toast.success('Account created successfully!');
@@ -131,7 +176,7 @@ export function Auth() {
       } else if (code === 'auth/user-not-found' || code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
         message = 'Invalid email or password. Please verify and try again.';
       } else if (code === 'auth/too-many-requests') {
-        message = 'Access temporarily disabled due to multiple failed login attempts. Please reset your password or try again later.';
+        message = 'Access temporarily disabled due to failed attempts. Please reset password or try later.';
       } else if (code === 'auth/network-request-failed') {
         message = 'Network error. Please check your internet connection.';
       } else if (code === 'auth/operation-not-allowed') {
@@ -277,6 +322,11 @@ export function Auth() {
                   <Input 
                     id="email" 
                     type="email" 
+                    inputMode="email"
+                    autoComplete={isLogin ? "username email" : "email"}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
                     placeholder="you@example.com" 
                     className="h-11 rounded-xl border border-border bg-background focus-visible:ring-2 focus-visible:ring-primary/20 text-sm"
                     value={email}
@@ -294,21 +344,39 @@ export function Auth() {
                       <button 
                         type="button"
                         onClick={handleForgotPassword}
-                        className="text-xs font-semibold text-primary hover:underline"
+                        className="text-xs font-semibold text-primary hover:underline cursor-pointer"
                       >
                         Forgot password?
                       </button>
                     )}
                   </div>
-                  <Input 
-                    id="password" 
-                    type="password" 
-                    placeholder="••••••••"
-                    className="h-11 rounded-xl border border-border bg-background focus-visible:ring-2 focus-visible:ring-primary/20 text-sm"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required 
-                  />
+                  <div className="relative">
+                    <Input 
+                      id="password" 
+                      type={showPassword ? "text" : "password"} 
+                      autoComplete={isLogin ? "current-password" : "new-password"}
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      placeholder="••••••••"
+                      className="h-11 rounded-xl border border-border bg-background focus-visible:ring-2 focus-visible:ring-primary/20 text-sm pr-10"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required 
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-1"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
                 </div>
 
                 <Button 
@@ -316,8 +384,9 @@ export function Auth() {
                   className="w-full h-11 font-semibold rounded-xl transition-all active:scale-[0.99] text-sm mt-2 flex items-center justify-center gap-2" 
                   disabled={loading}
                 >
+                  {loading && <Loader2 className="w-4 h-4 animate-spin shrink-0" />}
                   <span>{loading ? 'Please wait...' : isLogin ? 'Sign in' : 'Create account'}</span>
-                  <ArrowRight className="w-4 h-4 shrink-0" />
+                  {!loading && <ArrowRight className="w-4 h-4 shrink-0" />}
                 </Button>
               </form>
 

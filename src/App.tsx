@@ -360,9 +360,9 @@ export default function App() {
           const cleanHandle = (user.email ? user.email.split('@')[0] : (user.displayName || 'user')).toLowerCase().replace(/[^a-z0-9]/g, '') || 'user';
           const initialProfile: UserProfile = {
             uid: user.uid,
-            email: user.email!,
-            displayName: user.displayName,
-            photoURL: user.photoURL,
+            email: user.email || '',
+            displayName: user.displayName || 'User',
+            photoURL: user.photoURL || '',
             upiId: `${cleanHandle}@upi`,
             categories: DEFAULT_CATEGORIES,
             settings: {
