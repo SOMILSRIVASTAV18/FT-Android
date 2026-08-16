@@ -40,7 +40,12 @@ import {
   Landmark,
   UserPlus,
   Calculator,
-  QrCode
+  QrCode,
+  MailCheck,
+  ShieldCheck,
+  Inbox,
+  Sparkles,
+  ArrowRight
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -625,62 +630,121 @@ export default function App() {
 
   if (user && needsVerification) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-primary/20 via-background to-background p-4">
-        <Card className="w-full max-w-md border-none glass shadow-2xl rounded-[40px] overflow-hidden">
-          <CardHeader className="space-y-2 pb-8 pt-10 text-center">
-            <div className="flex justify-center mb-6">
-              <Logo size="lg" />
+      <div className="flex items-center justify-center min-h-screen bg-background text-foreground p-4 sm:p-6 lg:p-10 relative selection:bg-primary/20">
+        {/* Subtle ambient lighting */}
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,_var(--tw-gradient-stops))] from-primary/10 via-transparent to-transparent pointer-events-none" />
+
+        <div className="w-full max-w-md md:max-w-3xl lg:max-w-4xl bg-card border border-border/80 shadow-2xl rounded-3xl md:rounded-[32px] overflow-hidden relative z-10">
+          <div className="grid grid-cols-1 md:grid-cols-12 min-h-[460px]">
+            
+            {/* Desktop Left Showcase */}
+            <div className="hidden md:flex md:col-span-5 flex-col justify-between p-10 bg-muted/30 border-r border-border/60 relative">
+              <div className="space-y-6">
+                <div className="flex items-center gap-3">
+                  <Logo size="md" />
+                  <div>
+                    <span className="font-extrabold tracking-tight text-foreground">FinTrack Pro</span>
+                    <p className="text-[11px] text-muted-foreground font-medium">Security Verification</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                    <MailCheck className="w-4 h-4" />
+                  </div>
+                  <h2 className="text-2xl font-extrabold tracking-tight text-foreground leading-snug">
+                    Confirm your email to activate sync.
+                  </h2>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Verifying your email ensures your transactions, budgets, and cloud QR codes are safely accessible across all your devices.
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-8 flex items-center gap-2 text-xs text-muted-foreground font-medium">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                <span>Protected by Firestore user isolation</span>
+              </div>
             </div>
-            <CardTitle className="text-3xl font-black tracking-tighter">Verify Your Email</CardTitle>
-            <CardDescription className="font-bold">
-              We've sent a verification link to <span className="text-primary">{user.email}</span>
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6 px-8">
-            <div className="space-y-4 text-center">
-              <p className="text-sm text-muted-foreground font-medium">
-                Please check your inbox and click the link to verify your account. Once verified, click the button below to continue.
-              </p>
-              <Button 
-                className="w-full h-14 font-black rounded-2xl shadow-xl shadow-primary/20 transition-all active:scale-95 mt-4"
-                onClick={async () => {
-                  setLoading(true);
-                  try {
-                    await user.reload();
-                    if (user.emailVerified) {
-                      toast.success("Email verified successfully!");
-                    } else {
-                      toast.error("Email not verified yet. Please check your inbox.");
+
+            {/* Verification Actions */}
+            <div className="col-span-12 md:col-span-7 p-7 sm:p-10 flex flex-col justify-between">
+              <div>
+                <div className="flex justify-center md:hidden mb-4">
+                  <Logo size="lg" />
+                </div>
+                
+                <div className="space-y-2 mb-6 text-center md:text-left">
+                  <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
+                    Verify your email
+                  </h1>
+                  <p className="text-sm text-muted-foreground">
+                    We sent a verification link to <br className="hidden md:block" />
+                    <span className="font-semibold text-foreground">{user.email}</span>
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Click the verification link sent to your inbox, then tap the button below to continue.
+                  </p>
+
+                  <Button 
+                    className="w-full h-11 font-semibold rounded-xl transition-all active:scale-[0.99] text-sm flex items-center justify-center gap-2"
+                    disabled={loading}
+                    onClick={async () => {
+                      setLoading(true);
+                      try {
+                        if (auth.currentUser) {
+                          await auth.currentUser.reload();
+                          const refreshedUser = auth.currentUser;
+                          setUser({ ...refreshedUser } as any);
+                          if (refreshedUser.emailVerified) {
+                            toast.success("Email verified! Welcome to FinTrack Pro.");
+                          } else {
+                            toast.error("Email not verified yet. Please check your inbox or spam folder.");
+                          }
+                        }
+                      } catch (error: any) {
+                        toast.error(error?.message || "Failed to refresh verification status.");
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                  >
+                    <span>{loading ? "Checking status..." : "I've verified my email"}</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="pt-6 mt-4 border-t border-border/50 flex items-center gap-3">
+                <Button 
+                  variant="outline" 
+                  className="flex-1 h-10 text-xs font-semibold rounded-xl border border-border"
+                  onClick={async () => {
+                    try {
+                      await sendEmailVerification(user);
+                      toast.success("Verification link resent to your email.");
+                    } catch (error: any) {
+                      toast.error(error?.message || "Failed to resend email.");
                     }
-                  } catch (error) {
-                    toast.error("Failed to refresh status.");
-                  } finally {
-                    setLoading(false);
-                  }
-                }}
-              >
-                I've Verified My Email
-              </Button>
+                  }}
+                >
+                  Resend email
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  className="flex-1 h-10 text-xs font-semibold text-muted-foreground hover:text-destructive rounded-xl"
+                  onClick={() => auth.signOut()}
+                >
+                  Sign out
+                </Button>
+              </div>
             </div>
-          </CardContent>
-          <CardFooter className="flex flex-col gap-2 pb-8">
-            <div className="flex w-full gap-2">
-              <Button variant="ghost" className="flex-1 text-xs font-bold" onClick={async () => {
-                try {
-                  await sendEmailVerification(user);
-                  toast.success("Verification email resent!");
-                } catch (error) {
-                  toast.error("Failed to resend email.");
-                }
-              }}>
-                Resend Email
-              </Button>
-              <Button variant="ghost" className="flex-1 text-xs font-bold text-destructive" onClick={() => auth.signOut()}>
-                Back to Login
-              </Button>
-            </div>
-          </CardFooter>
-        </Card>
+
+          </div>
+        </div>
         <Toaster position="top-center" richColors closeButton />
       </div>
     );
